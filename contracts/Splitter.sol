@@ -1,30 +1,36 @@
 pragma solidity 0.5.8;
 
-contract Owned {
-    address public owner = msg.sender;
-
-    modifier onlyOwner()  {
-        require(msg.sender == owner, 'Only owner allowed!');
-        _;
-    }
-
-    function changeOwner(address newOwner) public onlyOwner {
-        owner = newOwner;
-    }
-}
+import "./Owned.sol";
+import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 
 contract Splitter is Owned {
+    using SafeMath for uint256;
+
     struct Peer {
         uint256 index;
         uint256 balance;
     }
     address[] public peers;
     mapping (address => Peer) public peerMap;
+    /*
+    / About 100 - 200 seems to be a reasonable number given:
+    / historic gas limits and split() method gas expenditiure.
+    */
+    uint32 private peerCap;
+    address owner;
 
-    event LogAddPeer(address indexed owner, address indexed peer);
-    event LogRemovePeer(address indexed owner, address indexed peer);
+    event LogPeerAdded(address indexed owner, address indexed peer);
+    event LogPeerRemoved(address indexed owner, address indexed peer);
     event LogSplit(address indexed initiator, uint indexed peers);
-    event LogClaim(address indexed initiator, uint indexed amount);
+    event LogClaimed(address indexed initiator, uint indexed amount);
+
+    constructor(uint32 maxPeers) public {
+        peerCap = maxPeers;
+    }
+
+    function setPeerCap(uint32 maxPeers) external onlyOwner {
+        peerCap = maxPeers;
+    }
 
     function getPeerCount() external view returns (uint256) {
         return peers.length;
@@ -36,32 +42,55 @@ contract Splitter is Owned {
         peerMap[peer] = Peer(peers.length + 1, 0);
         peers.push(peer);
 
-        emit LogAddPeer(owner, peer);
+        emit LogPeerAdded(owner, peer);
     }
 
-    function removePeer(address peer) external onlyOwner {
-        require(peerMap[peer].index > 0, 'Peer not part of contract');
+    function removePeer(uint index) external onlyOwner {
+        require(index >= 0 && index < peers.length, 'Peer not part of contract');
 
-        uint256 peerIndex = peerMap[peer].index;
+        address peer = peers[index];
 
         delete peerMap[peer];
-        peers[peerIndex - 1] = peers[peers.length - 1];
-        peerMap[peers[peerIndex - 1]].index = peerIndex;
+        peers[index - 1] = peers[peers.length - 1];
         delete peers[peers.length - 1];
         peers.length--;
 
-        emit LogRemovePeer(owner, peer);
+        emit LogPeerRemoved(owner, peer);
     }
 
-    function split() external payable {
+    function split(address[] calldata beneficiaries) external payable {
         require(msg.value > 0, 'Invalid amount!');
+        require(beneficiaries.length <= peerCap, 'Split between too many peers requested');
+        uint256 amount;
+        uint256 change;
 
-        uint256 amount = msg.value / peers.length;
+        if (beneficiaries.length > 0) {
+            amount = msg.value.div(beneficiaries.length);
+            change = msg.value.mod(beneficiaries.length);
 
-        for (uint256 i = 0; i < peers.length; i++) {
-            uint256 newBalance = peerMap[peers[i]].balance + amount;
-            require(newBalance >= peerMap[peers[i]].balance, 'Balance overflow!');
-            peerMap[peers[i]].balance = newBalance;
+            for (uint256 i = 0; i < beneficiaries.length; i++) {
+                Peer memory peer = peerMap[beneficiaries[i]];
+                require(peer.index > 0, 'Peer not part of contract');
+                peerMap[beneficiaries[i]].balance = peer.balance.add(amount);
+            }
+        } else {
+             amount = msg.value.div(peers.length);
+             change = msg.value.mod(peers.length);
+
+            for (uint256 i = 0; i < peers.length; i++) {
+                Peer memory peer = peerMap[peers[i]];
+                peerMap[peers[i]].balance = peer.balance.add(amount);
+            }
+        }
+
+        if (change > 0) {
+            Peer memory peer = peerMap[msg.sender];
+
+            require(
+                peer.index > 0,
+                'Sender not part of contract and cannot get change back'
+            );
+            peerMap[msg.sender].balance = peer.balance.add(change);
         }
 
         emit LogSplit(msg.sender, peers.length);
@@ -70,9 +99,9 @@ contract Splitter is Owned {
     function claim(uint256 amount) external {
         require(peerMap[msg.sender].balance >= amount, 'Insufficient balance!');
 
-        peerMap[msg.sender].balance -= amount;
+        peerMap[msg.sender].balance.sub(amount);
         msg.sender.transfer(amount);
 
-        emit LogClaim(msg.sender, amount);
+        emit LogClaimed(msg.sender, amount);
     }
 }
