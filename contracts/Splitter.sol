@@ -110,8 +110,9 @@ contract Splitter is Owned {
         require(peerMap[msg.sender].balance >= amount, 'Insufficient balance!');
 
         peerMap[msg.sender].balance.sub(amount);
-        msg.sender.transfer(amount);
 
         emit LogClaimed(msg.sender, amount);
+
+        msg.sender.transfer(amount);
     }
 }
