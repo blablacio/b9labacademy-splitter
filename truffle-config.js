@@ -1,7 +1,7 @@
 module.exports = {
   networks: {
     splitter: {
-      host: 'genache',
+      host: 'ganache',
       port: 8545,
       network_id: '*',
       gas: 5000000
