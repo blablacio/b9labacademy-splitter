@@ -20,7 +20,7 @@ contract Splitter is Owned {
 
     event LogPeerAdded(address indexed owner, address indexed peer);
     event LogPeerRemoved(address indexed owner, address indexed peer);
-    event LogSplit(address indexed initiator, uint indexed peers);
+    event LogSplit(address indexed initiator, address[] peers, uint256 amount);
     event LogClaimed(address indexed initiator, uint indexed amount);
 
     constructor(uint32 maxPeers) public {
@@ -35,28 +35,44 @@ contract Splitter is Owned {
         return peers.length;
     }
 
+    function getPeers() external view returns (address[] memory) {
+        return peers;
+    }
+
     function addPeer(address peer) external onlyOwner {
         require(peerMap[peer].index == 0, 'Peer already part of contract');
         require(peers.length < peerCap, 'Peer cap reached');
 
-        peerMap[peer] = Peer(peers.length + 1, 0);
-        peers.push(peer);
+        peerMap[peer] = Peer(peers.push(peer), peerMap[peer].balance);
 
-        emit LogPeerAdded(super.owner(), peer);
+        emit LogPeerAdded(msg.sender, peer);
     }
 
-    function removePeer(uint index) external onlyOwner {
-        require(index > 0 && index < peers.length, 'Peer not part of contract');
+    function removePeer(uint oneBasedIndex) external onlyOwner {
+        require(oneBasedIndex > 0 && oneBasedIndex <= peers.length, 'Peer not part of contract');
 
-        address peer = peers[index];
+        // Get requested peer
+        address peer = peers[oneBasedIndex - 1];
 
-        delete peerMap[peer];
-        peers[index - 1] = peers[peers.length - 1];
-        peerMap[peers[index - 1]].index = index;
-        delete peers[peers.length - 1];
+        // Set peer index to 0 to deactivate
+        peerMap[peer].index = 0;
+
+        if (peers.length > 1) {
+            // Swap removed peer with last peer in array
+            peers[oneBasedIndex - 1] = peers[peers.length - 1];
+            // Change swapped peer index to removed peer index
+            peerMap[peers[oneBasedIndex - 1]].index = oneBasedIndex;
+            // Delete last peer
+            delete peers[peers.length - 1];
+        } else {
+            // Just remove peer without swapping
+            delete peers[oneBasedIndex - 1];
+        }
+
+        // Decrement peers array length
         peers.length--;
 
-        emit LogPeerRemoved(super.owner(), peer);
+        emit LogPeerRemoved(msg.sender, peer);
     }
 
     function split(address[] calldata beneficiaries) external payable {
@@ -65,15 +81,12 @@ contract Splitter is Owned {
             beneficiaries.length > 0,
             'You need to send to at least one beneficiary'
         );
-        uint256 amount;
-        uint256 change;
 
-        amount = msg.value.div(beneficiaries.length);
-        change = msg.value.mod(beneficiaries.length);
+        uint256 amount = msg.value.div(beneficiaries.length);
+        uint256 change = msg.value.mod(beneficiaries.length);
 
         for (uint256 i = 0; i < beneficiaries.length; i++) {
-            Peer memory peer = peerMap[beneficiaries[i]];
-            peerMap[beneficiaries[i]].balance = peer.balance.add(amount);
+            peerMap[beneficiaries[i]].balance = peerMap[beneficiaries[i]].balance.add(amount);
         }
 
         if (change > 0) {
@@ -81,20 +94,17 @@ contract Splitter is Owned {
             peerMap[msg.sender].balance = peer.balance.add(change);
         }
 
-        emit LogSplit(msg.sender, beneficiaries.length);
+        emit LogSplit(msg.sender, beneficiaries, msg.value);
     }
 
     function split_all() external payable {
         require(msg.value > 0, 'Invalid amount!');
-        uint256 amount;
-        uint256 change;
 
-        amount = msg.value.div(peers.length);
-        change = msg.value.mod(peers.length);
+        uint256 amount = msg.value.div(peers.length);
+        uint256 change = msg.value.mod(peers.length);
 
         for (uint256 i = 0; i < peers.length; i++) {
-            Peer memory peer = peerMap[peers[i]];
-            peerMap[peers[i]].balance = peer.balance.add(amount);
+            peerMap[peers[i]].balance = peerMap[peers[i]].balance.add(amount);
         }
 
         if (change > 0) {
@@ -102,7 +112,7 @@ contract Splitter is Owned {
             peerMap[msg.sender].balance = peer.balance.add(change);
         }
 
-        emit LogSplit(msg.sender, peers.length);
+        emit LogSplit(msg.sender, peers, msg.value);
     }
 
     function claim(uint256 amount) external {

@@ -36,7 +36,9 @@ contract('Splitter', accounts => {
       let peer = await splitter.peerMap(peerAddress);
       peerBalancesBefore = peerBalancesBefore.add(peer.balance);
     }
-    
+
+    assert.equal(await splitter.getPeerCount(), 3);
+
     assert.equal(peerBalancesBefore, 0, 'Wrong peer balances!');
     await splitter.split_all({ value: 5, from: owner });
 
@@ -101,6 +103,92 @@ contract('Splitter', accounts => {
       await splitter.split([user1, user2], { value: amount, from: owner });
     } catch (err) {
       assert.equal(err.reason, 'SafeMath: addition overflow');
+    }
+  });
+
+  it('should return proper peer count', async() => {
+    await splitter.addPeer(owner, { from: owner });
+    await splitter.addPeer(user1, { from: owner });
+    await splitter.addPeer(user2, { from: owner });
+
+    let peers = await splitter.getPeers();
+    let peerCount = await splitter.getPeerCount();
+
+    assert.equal(peers.length, peerCount);
+  });
+
+  it('should properly handle peer removal and preserve peer balance', async() => {
+    await splitter.addPeer(owner, { from: owner });
+    await splitter.addPeer(user1, { from: owner });
+    await splitter.addPeer(user2, { from: owner });
+    await splitter.split_all({ value: 5, from: owner });
+
+    let peers = await splitter.getPeers();
+
+    assert.equal(peers[0], owner, 'Wrong peer at index 0');
+    assert.equal(peers[1], user1, 'Wrong peer at index 1');
+    assert.equal(peers[2], user2, 'Wrong peer at index 2');
+
+    let peer = await splitter.peerMap(owner);
+    assert.equal(peer.index, 1, 'Wrong index for first peer');
+
+    peer = await splitter.peerMap(user1);
+    assert.equal(peer.index, 2, 'Wrong index for second peer');
+    
+    peer = await splitter.peerMap(user2);
+    assert.equal(peer.index, 3, 'Wrong index for third peer');
+
+    await splitter.removePeer(1);
+
+    peers = await splitter.getPeers();
+
+    assert.equal(peers[0], user2, 'Wrong peer at index 0');
+    assert.equal(peers[1], user1, 'Wrong peer at index 1');
+
+    peer = await splitter.peerMap(user1);
+    assert.equal(peer.index, 2, 'Wrong index for first peer');
+
+    peer = await splitter.peerMap(user2);
+    assert.equal(peer.index, 1, 'Wrong index for second peer');
+
+    peer = await splitter.peerMap(owner);
+    assert.equal(peer.index, 0, 'Wrong index for removed peer');
+
+    await splitter.removePeer(1);
+
+    peers = await splitter.getPeers();
+    assert.equal(peers[0], user1, 'Wrong peer at index 0');
+
+    peer = await splitter.peerMap(user1);
+    assert.equal(peer.index, 1, 'Wrong index for second peer');
+
+    peer = await splitter.peerMap(owner);
+    assert.equal(peer.index, 0, 'Wrong index for first removed peer');
+
+    peer = await splitter.peerMap(user2);
+    assert.equal(peer.index, 0, 'Wrong index for second removed peer');
+
+    await splitter.removePeer(1);
+
+    peers = await splitter.getPeers();
+    assert.equal(peers.length, 0, 'Wrong peer count after removing all peers');
+
+    peer = await splitter.peerMap(owner);
+    assert.equal(peer.index, 0, 'Wrong peer index in peer map after removing all peers');
+    assert.equal(peer.balance, 3, 'Wrong peer balance in peer map after removing all peers');
+
+    peer = await splitter.peerMap(user1);
+    assert.equal(peer.index, 0, 'Wrong peer index in peer map after removing all peers');
+    assert.equal(peer.balance, 1, 'Wrong peer balance in peer map after removing all peers');
+    
+    peer = await splitter.peerMap(user2);
+    assert.equal(peer.index, 0, 'Wrong peer index in peer map after removing all peers');
+    assert.equal(peer.balance, 1, 'Wrong peer balance in peer map after removing all peers');
+
+    try {
+      await splitter.removePeer(1);
+    } catch (err) {
+      assert.equal(err.reason, 'Peer not part of contract');
     }
   });
 });
