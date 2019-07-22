@@ -16,4 +16,5 @@ services:
     depends_on:
       - ganache
     volumes:
+      - /splitter/node_modules
       - .:/splitter
