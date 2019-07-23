@@ -6,7 +6,7 @@ contract('Splitter', accounts => {
   const [owner, attacker, user1, user2, user3] = accounts;
 
   beforeEach('setup contract for each test', async () => {
-    splitter = await Splitter.new(100, { from: owner});
+    splitter = await Splitter.new(100, false, { from: owner});
   });
   
   it('should only enable owner to add peer', async() => {
@@ -247,6 +247,7 @@ contract('Splitter', accounts => {
   it('should not allow pausing/resuming killed contracts', async() => {
     assert.isFalse(await splitter.isKilled());
 
+    await splitter.pause({ from: owner });
     await splitter.kill({ from: owner });
   
     assert.isTrue(await splitter.isKilled());
@@ -263,6 +264,24 @@ contract('Splitter', accounts => {
       assert.strictEqual(err.reason, 'Contract killed');
     }
   });
+
+  it('should only allow killing of paused contracts', async() => {
+    assert.isFalse(await splitter.isKilled());
+
+    try {
+      await splitter.kill({ from: owner });
+    } catch(err) {
+      assert.strictEqual(err.reason, 'Contract not paused');
+    }
+
+    assert.isFalse(await splitter.isKilled());
+
+    await splitter.pause({ from: owner });
+    await splitter.kill({ from: owner });
+
+    assert.isTrue(await splitter.isKilled());
+  });
+
 
   it('should only allow splitting when not paused', async() => {
     assert.isFalse(await splitter.isPaused());

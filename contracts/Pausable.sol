@@ -10,22 +10,22 @@ contract Pausable is Owned {
     event LogResumed(address who);
     event LogKilled(address who);
 
-    constructor() internal {
-        paused = false;
+    constructor(bool _paused) internal {
+        paused = _paused;
         killed = false;
     }
 
-    modifier notPaused {
+    modifier whenRunning {
         require(paused == false, 'Contract paused');
         _;
     }
 
-    modifier onlyPaused {
+    modifier whenPaused {
         require(paused == true, 'Contract not paused');
         _;
     }
 
-    modifier notKilled {
+    modifier whenAlive {
         require(killed == false, 'Contract killed');
         _;
     }
@@ -34,13 +34,13 @@ contract Pausable is Owned {
         return paused;
     }
 
-    function pause() public notKilled notPaused onlyOwner {
+    function pause() public whenAlive whenRunning onlyOwner {
         paused = true;
 
         emit LogPaused(msg.sender);
     }
 
-    function resume() public notKilled onlyPaused onlyOwner {
+    function resume() public whenAlive whenPaused onlyOwner {
         paused = false;
 
         emit LogResumed(msg.sender);
@@ -50,9 +50,7 @@ contract Pausable is Owned {
         return killed;
     }
 
-    function kill() public onlyOwner {
-        require(killed == false, 'Contract already killed');
-
+    function kill() public whenPaused whenAlive onlyOwner {
         killed = true;
 
         emit LogKilled(msg.sender);

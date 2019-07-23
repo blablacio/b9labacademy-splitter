@@ -24,7 +24,7 @@ contract Splitter is Pausable {
     event LogClaimed(address indexed initiator, uint indexed amount);
     event LogPeerCapChanged(address indexed owner, uint32 newPeerCap);
 
-    constructor(uint32 maxPeers) public {
+    constructor(uint32 maxPeers, bool paused) Pausable(paused) public {
         peerCap = maxPeers;
     }
 
@@ -78,7 +78,7 @@ contract Splitter is Pausable {
         emit LogPeerRemoved(msg.sender, peer);
     }
 
-    function split(address[] calldata beneficiaries) external payable notPaused notKilled {
+    function split(address[] calldata beneficiaries) external payable whenRunning whenAlive {
         require(msg.value > 0, 'Invalid amount!');
         require(
             beneficiaries.length > 0,
@@ -100,7 +100,7 @@ contract Splitter is Pausable {
         emit LogSplit(msg.sender, beneficiaries, msg.value);
     }
 
-    function split_all() external payable notPaused notKilled {
+    function split_all() external payable whenRunning whenAlive {
         require(msg.value > 0, 'Invalid amount!');
 
         uint256 amount = msg.value.div(peers.length);
@@ -118,7 +118,7 @@ contract Splitter is Pausable {
         emit LogSplit(msg.sender, peers, msg.value);
     }
 
-    function claim(uint256 amount) external notKilled {
+    function claim(uint256 amount) external whenAlive {
         require(peerMap[msg.sender].balance >= amount, 'Insufficient balance!');
 
         peerMap[msg.sender].balance = peerMap[msg.sender].balance.sub(amount);
