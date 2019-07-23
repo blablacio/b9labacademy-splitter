@@ -1,9 +1,9 @@
 pragma solidity 0.5.8;
 
-import "./Owned.sol";
+import "./Pausable.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 
-contract Splitter is Owned {
+contract Splitter is Pausable {
     using SafeMath for uint256;
 
     struct Peer {
@@ -78,7 +78,7 @@ contract Splitter is Owned {
         emit LogPeerRemoved(msg.sender, peer);
     }
 
-    function split(address[] calldata beneficiaries) external payable {
+    function split(address[] calldata beneficiaries) external payable notPaused notKilled {
         require(msg.value > 0, 'Invalid amount!');
         require(
             beneficiaries.length > 0,
@@ -100,7 +100,7 @@ contract Splitter is Owned {
         emit LogSplit(msg.sender, beneficiaries, msg.value);
     }
 
-    function split_all() external payable {
+    function split_all() external payable notPaused notKilled {
         require(msg.value > 0, 'Invalid amount!');
 
         uint256 amount = msg.value.div(peers.length);
@@ -118,7 +118,7 @@ contract Splitter is Owned {
         emit LogSplit(msg.sender, peers, msg.value);
     }
 
-    function claim(uint256 amount) external {
+    function claim(uint256 amount) external notKilled {
         require(peerMap[msg.sender].balance >= amount, 'Insufficient balance!');
 
         peerMap[msg.sender].balance = peerMap[msg.sender].balance.sub(amount);

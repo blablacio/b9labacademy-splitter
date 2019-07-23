@@ -215,4 +215,86 @@ contract('Splitter', accounts => {
       assert.strictEqual(err.reason, 'Peer not part of contract');
     }
   });
+
+  it('should only allow owner to pause, resume and kill', async() => {
+    try {
+      await splitter.pause({ from: user1 });
+    } catch(err) {
+      assert.strictEqual(err.reason, 'Only owner allowed!');
+    }
+
+    assert.isFalse(await splitter.isPaused());
+    await splitter.pause({ from: owner });
+    assert.isTrue(await splitter.isPaused());
+
+    try {
+      await splitter.resume({ from: user1 });
+    } catch(err) {
+      assert.strictEqual(err.reason, 'Only owner allowed!');
+    }
+
+    try {
+      await splitter.kill({ from: user1 });
+    } catch(err) {
+      assert.strictEqual(err.reason, 'Only owner allowed!');
+    }
+
+    assert.isFalse(await splitter.isKilled());
+    await splitter.kill({ from: owner });
+    assert.isTrue(await splitter.isKilled());
+  });
+
+  it('should not allow pausing/resuming killed contracts', async() => {
+    assert.isFalse(await splitter.isKilled());
+
+    await splitter.kill({ from: owner });
+  
+    assert.isTrue(await splitter.isKilled());
+
+    try {
+      await splitter.pause({ from: owner });
+    } catch(err) {
+      assert.strictEqual(err.reason, 'Contract killed');
+    }
+
+    try {
+      await splitter.resume({ from: owner });
+    } catch(err) {
+      assert.strictEqual(err.reason, 'Contract killed');
+    }
+  });
+
+  it('should only allow splitting when not paused', async() => {
+    assert.isFalse(await splitter.isPaused());
+
+    await splitter.pause({ from: owner });
+
+    assert.isTrue(await splitter.isPaused());
+
+    try {
+      await splitter.split([user1, user2], { from: owner, value: 1000 });
+    } catch(err) {
+      assert.strictEqual(err.reason, 'Contract paused');
+    }
+  });
+
+  it('should allow claiming even when paused', async() => {
+    assert.isFalse(await splitter.isPaused());
+
+    await splitter.split([user1, user2], { from: owner, value: 1000 });
+    await splitter.pause({ from: owner });
+
+    let user1StartingBalance = new BN(await web3.eth.getBalance(user1));
+
+    let tx = await splitter.claim(100, { from: user1, gasPrice: 42 });
+
+    let user1EndingBanace = new BN(await web3.eth.getBalance(user1));
+
+    assert.isTrue(
+      user1StartingBalance
+      .add(new BN(100))
+      .sub(new BN(tx.receipt.gasUsed).mul(new BN(42)))
+      .eq(user1EndingBanace)
+    );
+  });
 });
